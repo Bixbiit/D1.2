@@ -1,0 +1,19 @@
+{
+
+   "version": 2,
+
+   "name": "1_urok_video_simple",
+
+   "builds": [
+
+      { "src": "src/index.ts", "use": "@vercel/node" }
+
+   ],
+
+   "routes": [
+
+      { "src": "/(.*)", "dest": "/src/index.ts" }
+
+   ]
+
+}
