@@ -1,10 +1,16 @@
 import express, { Request, Response } from "express";
 
-// =================== ЧТО ЗДЕСЬ =================== //
-// Здесь располагаются типы и данные из db.ts
+const app = express();
+app.use(express.json());
 
-// Тип для видео
-export type dbVideo = {
+const port = 8080;
+
+// Объявим enum и типы
+enum Resolution {
+    P144='P144', P240='P240', P360='P360', P480='P480', P720='P720', P1080='P1080', P1440='P1440', P2160='P2160'
+}
+
+type Video = {
     id: number,
     title: string,
     author: string,
@@ -12,214 +18,98 @@ export type dbVideo = {
     minAgeRestriction: number | null,
     createdAt: string,
     publicationDate: string,
-    availableResolutions: Resolution[];
-}
-
-// Enum разрешений
-export enum Resolution {
-    P144 = 'P144',
-    P240 = 'P240',
-    P360 = 'P360',
-    P480 = 'P480',
-    P720 = 'P720',
-    P1080 = 'P1080',
-    P1440 = 'P1440',
-    P2160 = 'P2160'
-}
-
-// Тип для данных, которые приходят при создании видео
-export type inputVideoData = {
-    title: string,
-    author: string,
     availableResolutions: Resolution[]
 }
 
-// Тип для данных при обновлении видео
-export type updateVideoData = {
-    title: string,
-    author: string,
-    availableResolutions: Resolution[],
-    canBeDownloaded: boolean,
-    minAgeRestriction: number | null,
-    publicationDate: string
-}
-
-// Начальные данные
-export const db: dbVideo[] = [
-    {
-        id: 1,
-        title: '2342351',
-        author: '235r23tfdssfa',
-        canBeDownloaded: false,
-        minAgeRestriction: null,
-        createdAt: new Date().toISOString(),
-        publicationDate: new Date().toISOString(),
-        availableResolutions: [Resolution.P144]
-    },
-    {
-        id: 2,
-        title: '2342351',
-        author: '235r23tfdssfa',
-        canBeDownloaded: false,
-        minAgeRestriction: null,
-        createdAt: new Date().toISOString(),
-        publicationDate: new Date().toISOString(),
-        availableResolutions: [Resolution.P480]
-    }
+// Начальный массив данных
+let videos: Video[] = [
+    { id: 1, title: 'Test1', author: 'Author1', canBeDownloaded: false, minAgeRestriction: null, createdAt: new Date().toISOString(), publicationDate: new Date().toISOString(), availableResolutions: [Resolution.P144] },
+    { id: 2, title: 'Test2', author: 'Author2', canBeDownloaded: false, minAgeRestriction: null, createdAt: new Date().toISOString(), publicationDate: new Date().toISOString(), availableResolutions: [Resolution.P480] }
 ];
 
-// =================== Основной сервер =================== //
-// Здесь ваш оригинальный код app.ts
+// Помощники
+const findVideoById = (id: number) => videos.find(v => v.id === id);
+const generateId = () => Date.now();
 
-export const app = express();
-app.use(express.json());
+// Стандартизованный ответ об ошибках
+const errorResponse = (msg: string) => ({ errorsMessages: [{ message: msg, field: 'unknown' }] });
 
-export enum HttpStatus {
-    OK = 200,
-    Created = 201,
-    NoContent = 204,
-    BadRequest = 400,
-    NotFound = 404,
-    ServerError = 500
-}
+// Получение всех видео
+app.get('/videos', (req, res) => res.json(videos));
 
-export enum myURL {
-    VIDEOS = '/videos',
-    TEST = '/testing/all-data'
-}
-
-// Маршрут получение списка видео
-app.get(myURL.VIDEOS, (req: Request, res: Response) => {
-    res.status(HttpStatus.OK).json(db);
+// Получение по ID
+app.get('/videos/:id', (req, res) => {
+    const id = Number(req.params.id);
+    const v = findVideoById(id);
+    if (!v) return res.sendStatus(404);
+    res.json(v);
 });
 
-// Маршрут получения видео по ID
-app.get(`${myURL.VIDEOS}/:id`, (req: Request, res: Response) => {
-    const idURL = Number(req.params.id);
-    const video = db.find(v => v.id === idURL);
-
-    if (!video) {
-        return res.sendStatus(HttpStatus.NotFound);
-    }
-
-    res.status(HttpStatus.OK).json(video);
+// Удаление всех данных
+app.delete('/testing/all-data', (req, res) => {
+    videos = [];
+    res.sendStatus(204);
 });
 
-// Валидация данных для POST
-function defaultValidatePost(body: inputVideoData) {
-    const errors: { message: string, field: string }[] = [];
+// Создать видео
+app.post('/videos', (req, res) => {
+    const { title, author, availableResolutions } = req.body;
 
-    if (!body.title || body.title.length > 40) {
-        errors.push({ message: 'Incorrect title', field: 'title' });
-    }
+    if (!title || title.length > 40) return res.status(400).json(errorResponse('Incorrect title'));
+    if (!author || author.length > 20) return res.status(400).json(errorResponse('Incorrect author'));
+    if (!Array.isArray(availableResolutions) || availableResolutions.length === 0) return res.status(400).json(errorResponse('Incorrect availableResolutions'));
 
-    if (!body.author || body.author.length > 20) {
-        errors.push({ message: 'Incorrect author', field: 'author' });
-    }
-
-    if (!Array.isArray(body.availableResolutions) || body.availableResolutions.length < 1) {
-        errors.push({ message: `Incorrect availableResolutions: it's not array or empty`, field: 'availableResolutions' });
-    } else {
-        const allowed = Object.values(Resolution);
-        const invalid = body.availableResolutions.filter(el => !allowed.includes(el));
-        if (invalid.length > 0) {
-            errors.push({ message: `Incorrect availableResolutions: ${invalid.join(', ')}`, field: 'availableResolutions' });
-        }
-    }
-
-    return errors;
-}
-
-// Валидация данных для PUT
-function validateUpdateVideo(body: updateVideoData) {
-    const errors = defaultValidatePost(body);
-
-    if (typeof body.canBeDownloaded !== "boolean") {
-        errors.push({ message: 'incorrect type data in canBeDownloaded ', field: 'canBeDownloaded' });
-    }
-
-    if (body.minAgeRestriction !== null && (body.minAgeRestriction < 1 || body.minAgeRestriction > 18)) {
-        errors.push({ message: 'incorrect minAgeRestriction ', field: 'minAgeRestriction' });
-    }
-
-    if (typeof body.publicationDate !== "string" || isNaN(Date.parse(body.publicationDate))) {
-        errors.push({ message: "Incorrect publicationDate", field: "publicationDate" });
-    }
-
-    return errors;
-}
-
-// Маршрут добавления нового видео
-app.post(myURL.VIDEOS, (req: Request, res: Response) => {
-    const errors = defaultValidatePost(req.body);
-
-    if (errors.length > 0) {
-        return res.status(HttpStatus.BadRequest).json({ errorsMessages: errors });
-    }
-
-    const createdAt = new Date();
-    const publicationDate = new Date(createdAt.getTime() + 1000 * 60 * 60 * 24); // +1 день
-
-    const createVideo: dbVideo = {
-        id: new Date().getTime(),
-        title: req.body.title,
-        author: req.body.author,
+    const newVideo: Video = {
+        id: generateId(),
+        title,
+        author,
         canBeDownloaded: false,
         minAgeRestriction: null,
-        createdAt: createdAt.toISOString(),
-        publicationDate: publicationDate.toISOString(),
-        availableResolutions: req.body.availableResolutions
-    }
-
-    db.push(createVideo);
-    res.status(HttpStatus.Created).json(createVideo);
-});
-
-// Обновление видео по ID
-app.put(`${myURL.VIDEOS}/:id`, (req: Request, res: Response) => {
-    const idURL = Number(req.params.id);
-    const index = db.findIndex(el => el.id === idURL);
-
-    if (index === -1) {
-        return res.sendStatus(HttpStatus.NotFound);
-    }
-
-    const data: updateVideoData = req.body;
-    const errors = validateUpdateVideo(data);
-    if (errors.length > 0) {
-        return res.status(HttpStatus.BadRequest).json({ errorsMessages: errors })
-    }
-
-    db[index] = {
-        ...db[index],
-        ...req.body
+        createdAt: new Date().toISOString(),
+        publicationDate: new Date(Date.now() + 86400000).toISOString(), // +1 день
+        availableResolutions
     };
-
-    res.sendStatus(HttpStatus.NoContent);
+    videos.push(newVideo);
+    res.status(201).json(newVideo);
 });
 
-// Удаление видео по ID
-app.delete(`${myURL.VIDEOS}/:id`, (req: Request, res: Response) => {
-    const idURL = Number(req.params.id);
-    const index = db.findIndex(el => el.id === idURL);
+// Обновить видео
+app.put('/videos/:id', (req, res) => {
+    const id = Number(req.params.id);
+    const video = findVideoById(id);
+    if (!video) return res.sendStatus(404);
 
-    if (index === -1) {
-        return res.sendStatus(HttpStatus.NotFound);
-    }
+    const { title, author, availableResolutions, canBeDownloaded, minAgeRestriction, publicationDate } = req.body;
 
-    db.splice(index, 1);
-    res.sendStatus(HttpStatus.NoContent);
+    // Простая проверка
+    if (typeof title !== 'string' || title.length > 40) return res.status(400).json(errorResponse('Incorrect title'));
+    if (typeof author !== 'string' || author.length > 20) return res.status(400).json(errorResponse('Incorrect author'));
+    if (!Array.isArray(availableResolutions) || availableResolutions.length === 0) return res.status(400).json(errorResponse('Incorrect availableResolutions'));
+    if (typeof canBeDownloaded !== 'boolean') return res.status(400).json(errorResponse('Incorrect canBeDownloaded'));
+    if (typeof minAgeRestriction !== 'number' && minAgeRestriction !== null) return res.status(400).json(errorResponse('Incorrect minAgeRestriction'));
+    if (isNaN(Date.parse(publicationDate))) return res.status(400).json(errorResponse('Incorrect publicationDate'));
+
+    // Обновление
+    Object.assign(video, {
+        title,
+        author,
+        availableResolutions,
+        canBeDownloaded,
+        minAgeRestriction,
+        publicationDate
+    });
+    res.sendStatus(204);
 });
 
-// Очистка всех данных
-app.delete(myURL.TEST, (req: Request, res: Response) => {
-    db.length = 0;
-    res.sendStatus(HttpStatus.NoContent);
+// Удаление видео
+app.delete('/videos/:id', (req, res) => {
+    const id = Number(req.params.id);
+    const index = videos.findIndex(v => v.id === id);
+    if (index === -1) return res.sendStatus(404);
+    videos.splice(index, 1);
+    res.sendStatus(204);
 });
 
-// =================== Запуск сервера =================== //
-
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => {
-    console.log(`Сервер запущен на порте: ${PORT}`);
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
 });
