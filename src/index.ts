@@ -1,4 +1,4 @@
-import express, { Request, Response } from "express";
+/* import express, { Request, Response } from "express";
 
 const app = express();
 app.use(express.json());
@@ -112,4 +112,195 @@ app.delete('/videos/:id', (req, res) => {
 
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
+});
+*/
+
+import express, { Request, Response } from "express";
+
+// Типы и константы
+type dbVideo = {
+    id: number,
+    title: string,
+    author: string,
+    canBeDownloaded: boolean,
+    minAgeRestriction: number | null,
+    createdAt: string,
+    publicationDate: string,
+    availableResolutions: Resolution[];
+}
+
+enum Resolution {
+    P144 = 'P144',
+    P240 = 'P240',
+    P360 = 'P360',
+    P480 = 'P480',
+    P720 = 'P720',
+    P1080 = 'P1080',
+    P1440 = 'P1440',
+    P2160 = 'P2160'
+}
+
+type inputVideoData = {
+    title: string,
+    author: string,
+    availableResolutions: Resolution[]
+}
+
+type updateVideoData = {
+    title: string,
+    author: string,
+    availableResolutions: Resolution[],
+    canBeDownloaded: boolean,
+    minAgeRestriction: number | null,
+    publicationDate: string
+}
+
+// Начальный массив db
+const db: dbVideo[] = [
+    {
+        id: 1,
+        title: '2342351',
+        author: '235r23tfdssfa',
+        canBeDownloaded: false,
+        minAgeRestriction: null,
+        createdAt: new Date().toISOString(),
+        publicationDate: new Date().toISOString(),
+        availableResolutions: [Resolution.P144]
+    },
+    {
+        id: 2,
+        title: '2342351',
+        author: '235r23tfdssfa',
+        canBeDownloaded: false,
+        minAgeRestriction: null,
+        createdAt: new Date().toISOString(),
+        publicationDate: new Date().toISOString(),
+        availableResolutions: [Resolution.P480]
+    }
+]
+
+// Создаем сервер
+const app = express();
+app.use(express.json());
+
+enum HttpStatus {
+    OK = 200,
+    Created = 201,
+    NoContent = 204,
+    BadRequest = 400,
+    NotFound = 404,
+    ServerError = 500
+}
+
+const myURL = {
+    VIDEOS: '/videos',
+    TEST: '/testing/all-data'
+} as const;
+
+// Маршруты
+app.get(myURL.VIDEOS, (req: Request, res: Response) => {
+    res.status(HttpStatus.OK).json(db);
+});
+
+app.get(`${myURL.VIDEOS}/:id`, (req: Request, res: Response) => {
+    const idURL = Number(req.params.id);
+    const video = db.find(v => v.id === idURL);
+    if (!video) {
+        return res.sendStatus(HttpStatus.NotFound);
+    }
+    res.status(HttpStatus.OK).json(video);
+});
+
+app.post(myURL.VIDEOS, (req: Request, res: Response) => {
+    const errors = validatePost(req.body);
+    if (errors.length > 0) {
+        return res.status(HttpStatus.BadRequest).json({ errorsMessages: errors });
+    }
+    const createdAt = new Date();
+    const publicationDate = new Date(createdAt.getTime() + 1000 * 60 * 60 * 24); // +1 день
+    const newVideo: dbVideo = {
+        id: new Date().getTime(),
+        title: req.body.title,
+        author: req.body.author,
+        canBeDownloaded: false,
+        minAgeRestriction: null,
+        createdAt: createdAt.toISOString(),
+        publicationDate: publicationDate.toISOString(),
+        availableResolutions: req.body.availableResolutions
+    }
+    db.push(newVideo);
+    res.status(HttpStatus.Created).json(newVideo);
+});
+
+app.put(`${myURL.VIDEOS}/:id`, (req: Request, res: Response) => {
+    const idURL = Number(req.params.id);
+    const index = db.findIndex(el => el.id === idURL);
+    if (index === -1) {
+        return res.sendStatus(HttpStatus.NotFound);
+    }
+    const errors = validateUpdateVideo(req.body);
+    if (errors.length > 0) {
+        return res.status(HttpStatus.BadRequest).json({ errorsMessages: errors });
+    }
+    db[index] = {
+        ...db[index],
+        ...req.body
+    };
+    res.sendStatus(HttpStatus.NoContent);
+});
+
+app.delete(`${myURL.VIDEOS}/:id`, (req: Request, res: Response) => {
+    const idURL = Number(req.params.id);
+    const index = db.findIndex(el => el.id === idURL);
+    if (index === -1) {
+        return res.sendStatus(HttpStatus.NotFound);
+    }
+    db.splice(index, 1);
+    res.sendStatus(HttpStatus.NoContent);
+});
+
+app.delete(myURL.TEST, (req: Request, res: Response) => {
+    db.length = 0;
+    res.sendStatus(HttpStatus.NoContent);
+});
+
+// Валидация
+function validatePost(body: any): { message: string, field: string }[] {
+    const errors: { message: string, field: string }[] = [];
+    if (!body.title || body.title.length > 40) {
+        errors.push({ message: 'Incorrect title', field: 'title' });
+    }
+    if (!body.author || body.author.length > 20) {
+        errors.push({ message: 'Incorrect author', field: 'author' });
+    }
+    if (!Array.isArray(body.availableResolutions) || body.availableResolutions.length < 1) {
+        errors.push({ message: `Incorrect availableResolutions: it's not array or empty`, field: 'availableResolutions' });
+    } else {
+        const allowed = Object.values(Resolution);
+        const invalid = body.availableResolutions.filter((el: any) => !allowed.includes(el));
+        if (invalid.length > 0) {
+            errors.push({ message: `Incorrect availableResolutions: ${invalid.join(', ')}`, field: 'availableResolutions' });
+        }
+    }
+    return errors;
+}
+
+function validateUpdateVideo(body: any): { message: string, field: string }[] {
+    const errors = validatePost(body);
+    if (typeof body.canBeDownloaded !== "boolean") {
+        errors.push({ message: 'incorrect type data in canBeDownloaded', field: 'canBeDownloaded' });
+    }
+    if (body.minAgeRestriction !== null && (body.minAgeRestriction < 1 || body.minAgeRestriction > 18)) {
+        errors.push({ message: 'incorrect minAgeRestriction', field: 'minAgeRestriction' });
+    }
+    if (typeof body.publicationDate !== "string" || isNaN(Date.parse(body.publicationDate))) {
+        errors.push({ message: "Incorrect publicationDate", field: "publicationDate" });
+    }
+    return errors;
+}
+
+// Запуск сервера
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+    console.log(`Сервер запущен на порте: ${PORT}`);
 });
